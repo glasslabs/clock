@@ -12,7 +12,7 @@ to under modules in your configuration.
 ```yaml
 modules:
  - name: simple-clock
-    path: github.com/glasslabs/clock
+    url:  https://github.com/glasslabs/clock/releases/download/v1.0.0/clock.wasm
     position: top:right
     config:
       timeFormat: 15:04
