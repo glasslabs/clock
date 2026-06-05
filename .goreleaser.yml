@@ -9,7 +9,7 @@ builds:
   - main: ./
     binary: clock
     goos:
-      - js
+      - wasip1
     goarch:
       - wasm
     env:

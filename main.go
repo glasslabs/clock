@@ -1,32 +1,22 @@
-//go:build js && wasm
+//go:build wasip1
 
 package main
 
 import (
-	_ "embed"
-	"fmt"
 	"time"
 	_ "time/tzdata"
 
 	"github.com/glasslabs/client-go"
 )
 
-var (
-	//go:embed assets/style.css
-	css []byte
-
-	//go:embed assets/index.html
-	html []byte
-)
-
 // Config is the module configuration.
 type Config struct {
-	TimeFormat string
-	DateFormat string
-	Timezone   string
+	TimeFormat string `json:"timeFormat"`
+	DateFormat string `json:"dateFormat"`
+	Timezone   string `json:"timezone"`
 }
 
-// NewConfig returns a Config with default values set.
+// NewConfig returns a Config with default values.
 func NewConfig() Config {
 	return Config{
 		TimeFormat: "15:04",
@@ -35,76 +25,69 @@ func NewConfig() Config {
 	}
 }
 
+var (
+	mod *client.Module
+	log *client.Logger
+	cfg Config
+	loc *time.Location
+)
+
 func main() {
-	log := client.NewLogger()
-	mod, err := client.NewModule()
+	log = client.NewLogger()
+
+	var err error
+	mod, err = client.NewModule()
 	if err != nil {
 		log.Error("Could not create module", "error", err.Error())
 		return
 	}
 
-	cfg := NewConfig()
+	cfg = NewConfig()
 	if err = mod.ParseConfig(&cfg); err != nil {
 		log.Error("Could not parse config", "error", err.Error())
 		return
 	}
 
-	log.Info("Loading Module", "module", mod.Name())
-
-	m := &Module{
-		mod: mod,
-		cfg: cfg,
-		log: log,
+	if cfg.Timezone != "" {
+		loc, err = time.LoadLocation(cfg.Timezone)
+		if err != nil {
+			log.Error("Invalid timezone", "error", err.Error(), "timezone", cfg.Timezone)
+			//nolint:gosmopolitan // Used as fallback only.
+			loc = time.Local
+		}
 	}
 
-	if err = m.setup(); err != nil {
-		log.Error("Could not setup module", "error", err.Error())
-		return
-	}
+	log.Info("Module ready", "module", mod.Name())
 
-	tick := time.NewTicker(10 * time.Second)
-	defer tick.Stop()
+	render()
 
 	for {
-		m.update()
-
-		<-tick.C
+		time.Sleep(10 * time.Second)
+		render()
 	}
 }
 
-// Module runs the module.
-type Module struct {
-	mod *client.Module
-	cfg Config
-
-	loc *time.Location
-
-	log *client.Logger
-}
-
-func (m *Module) setup() error {
-	if m.cfg.Timezone != "" {
-		l, err := time.LoadLocation(m.cfg.Timezone)
-		if err != nil {
-			return fmt.Errorf("invalid timezone: %w", err)
-		}
-		m.loc = l
-	}
-
-	if err := m.mod.LoadCSS(string(css)); err != nil {
-		return fmt.Errorf("loading css: %w", err)
-	}
-	m.mod.Element().SetInnerHTML(string(html))
-
-	return nil
-}
-
-func (m *Module) update() {
+func render() {
 	now := time.Now()
-	if m.loc != nil {
-		now = now.In(m.loc)
+	if loc != nil {
+		now = now.In(loc)
 	}
 
-	m.mod.Element().QuerySelector(".time").SetInnerHTML(now.Format(m.cfg.TimeFormat))
-	m.mod.Element().QuerySelector(".date").SetInnerHTML(now.Format(m.cfg.DateFormat))
+	w := client.NewVStack(
+		client.NewText(now.Format(cfg.TimeFormat),
+			client.WithColor("#ffffff"),
+			client.WithFontSize(95),
+			client.WithLight(),
+			client.WithAlign("right"),
+		),
+		client.NewText(now.Format(cfg.DateFormat),
+			client.WithColor("#cccccc"),
+			client.WithFontSize(24),
+			client.WithCondensed(),
+			client.WithLight(),
+			client.WithAlign("right"),
+		),
+	)
+
+	mod.Render(w)
 }
